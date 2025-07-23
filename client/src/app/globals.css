@@ -1,0 +1,8 @@
+@import "tailwindcss";
+
+@import "@pipecat-ai/voice-ui-kit/styles";
+
+:root {
+  --vkui-color-primary: red;
+  --vkui-radius-element: 999px;
+}
