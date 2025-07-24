@@ -64,15 +64,13 @@ async def run_bot(webrtc_connection):
             ""),
         voice_id="rex")
 
-    llm = OpenAILLMService(
-        api_key=os.getenv("OPENAI_API_KEY"),
-        system_prompt=SYSTEM_INSTRUCTION)
+    llm = OpenAILLMService(api_key=os.getenv("OPENAI_API_KEY"))
 
     context = OpenAILLMContext(
         [
             {
-                "role": "user",
-                "content": "Start by greeting the user warmly and introducing yourself.",
+                "role": "system",
+                "content": SYSTEM_INSTRUCTION,
             }
         ],
     )
