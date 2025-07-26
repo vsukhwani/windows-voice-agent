@@ -1,4 +1,5 @@
 python-dotenv
 fastapi[all]
 uvicorn
-pipecat-ai[openai,deepgram,rime,silero,webrtc]
+mlx-audio
+pipecat-ai[openai,deepgram,rime,silero,webrtc,mlx-whisper]

@@ -1,8 +1,12 @@
 import argparse
 import asyncio
 import os
+import sys
 from contextlib import asynccontextmanager
 from typing import Dict
+
+# Add local pipecat to Python path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "pipecat", "src"))
 
 import uvicorn
 from dotenv import load_dotenv
@@ -15,8 +19,8 @@ from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
 from pipecat.services.openai.llm import OpenAILLMService
-from pipecat.services.rime.tts import RimeTTSService
-from pipecat.services.deepgram.stt import DeepgramSTTService
+from kokoro_tts import KokoroTTSService
+from pipecat.services.whisper.stt import WhisperSTTServiceMLX, MLXModel
 from pipecat.transports.base_transport import TransportParams
 from pipecat.processors.frameworks.rtvi import RTVIConfig, RTVIObserver, RTVIProcessor
 from pipecat.transports.network.small_webrtc import SmallWebRTCTransport
@@ -35,7 +39,7 @@ ice_servers = [
 ]
 
 
-SYSTEM_INSTRUCTION = f"""
+SYSTEM_INSTRUCTION = """
 "You are Pipecat, a friendly, helpful chatbot.
 
 Your goal is to demonstrate your capabilities in a succinct way.
@@ -56,15 +60,20 @@ async def run_bot(webrtc_connection):
         ),
     )
 
-    stt = DeepgramSTTService(api_key=os.getenv("DEEPGRAM_API_KEY"))
+    stt = WhisperSTTServiceMLX(model=MLXModel.LARGE_V3_TURBO_Q4)
 
-    tts = RimeTTSService(
-        api_key=os.getenv(
-            "RIME_API_KEY",
-            ""),
-        voice_id="rex")
+    tts = KokoroTTSService(
+        model="prince-canuma/Kokoro-82M",
+        voice="af_heart",
+        sample_rate=24000
+    )
 
-    llm = OpenAILLMService(api_key=os.getenv("OPENAI_API_KEY"))
+    llm = OpenAILLMService(
+        api_key=None,
+        model="mlx-community/Qwen3-235B-A22B-Instruct-2507-3bit-DWQ",
+        base_url="http://localhost:8000/v1",
+        max_tokens=4096,
+    )
 
     context = OpenAILLMContext(
         [
