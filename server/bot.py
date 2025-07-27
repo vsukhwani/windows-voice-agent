@@ -79,7 +79,8 @@ async def run_bot(webrtc_connection):
 
     llm = OpenAILLMService(
         api_key=None,
-        model="mlx-community/Qwen3-235B-A22B-Instruct-2507-3bit-DWQ",
+        model="google/gemma-3-12b",  # Medium-sized model. Uses ~8.5GB of RAM.
+        # model="mlx-community/Qwen3-235B-A22B-Instruct-2507-3bit-DWQ", # Large model. Uses ~110GB of RAM!
         base_url="http://localhost:8000/v1",
         max_tokens=4096,
     )
@@ -87,7 +88,7 @@ async def run_bot(webrtc_connection):
     context = OpenAILLMContext(
         [
             {
-                "role": "system",
+                "role": "user",
                 "content": SYSTEM_INSTRUCTION,
             }
         ],
