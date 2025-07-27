@@ -4,17 +4,14 @@
 
 import asyncio
 import concurrent.futures
-import os
-import sys
 from typing import AsyncGenerator, Optional
 
 import numpy as np
 from loguru import logger
 
-# Add local pipecat to Python path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "pipecat", "src"))
+import mlx.core as mx
+from mlx_audio.tts.utils import load_model
 
-# Import from local pipecat
 from pipecat.frames.frames import (
     ErrorFrame,
     Frame,
@@ -74,63 +71,43 @@ class KokoroTTSService(TTSService):
     def _initialize_model(self):
         """Initialize the Kokoro model. This runs in a separate thread."""
         try:
-            from mlx_audio.tts.utils import load_model
-
             logger.debug(f"Loading Kokoro model: {self._model_name}")
-            # Load the model
             self._model = load_model(self._model_name)
             logger.debug("Kokoro model loaded successfully")
-
-        except ImportError as e:
-            logger.error(f"Failed to import mlx_audio: {e}")
-            logger.error("Please install mlx-audio: pip install mlx-audio")
-            raise
         except Exception as e:
             logger.error(f"Failed to initialize Kokoro model: {e}")
             raise
 
     def can_generate_metrics(self) -> bool:
-        """Check if this service can generate processing metrics.
-
-        Returns:
-            True, as Kokoro service supports metrics generation.
-        """
         return True
 
     def _generate_audio_sync(self, text: str) -> bytes:
         """Synchronously generate audio from text. This runs in a separate thread."""
         try:
-            # Ensure model is initialized
             if self._init_future:
                 self._init_future.result()  # Wait for initialization
                 self._init_future = None
 
-            # Generate audio using Kokoro
             logger.debug(f"Generating audio for: {text}")
 
-            # Collect all audio segments
             audio_segments = []
             for result in self._model.generate(
                 text=text,
                 voice=self._voice,
                 speed=1.0,
             ):
-                # Each result is a GenerationResult with audio attribute
                 audio_segments.append(result.audio)
 
-            # Concatenate all audio segments
             if len(audio_segments) == 0:
                 raise ValueError("No audio generated")
             elif len(audio_segments) == 1:
                 audio_array = audio_segments[0]
             else:
-                # Concatenate multiple segments using MLX
-                import mlx.core as mx
                 audio_array = mx.concatenate(audio_segments, axis=0)
-            
+
             # Convert MLX array to NumPy array
             audio_np = np.array(audio_array, copy=False)
-            
+
             # Convert to raw PCM bytes (16-bit signed integer)
             # MLX audio returns float32 normalized audio
             audio_int16 = (audio_np * 32767).astype(np.int16)
@@ -160,7 +137,7 @@ class KokoroTTSService(TTSService):
 
             yield TTSStartedFrame()
 
-            # Run audio generation in executor to avoid blocking
+            # Run audio generation in executor (separate thread) to avoid blocking
             loop = asyncio.get_event_loop()
             audio_bytes = await loop.run_in_executor(
                 self._executor, self._generate_audio_sync, text

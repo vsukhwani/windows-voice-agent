@@ -13,7 +13,10 @@ from dotenv import load_dotenv
 from fastapi import BackgroundTasks, FastAPI
 from loguru import logger
 
+from pipecat.audio.turn.smart_turn.base_smart_turn import SmartTurnParams
+from pipecat.audio.turn.smart_turn.local_smart_turn_v2 import LocalSmartTurnAnalyzerV2
 from pipecat.audio.vad.silero import SileroVADAnalyzer
+from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
@@ -42,11 +45,17 @@ ice_servers = [
 SYSTEM_INSTRUCTION = """
 "You are Pipecat, a friendly, helpful chatbot.
 
+You are running a voice AI tech stack entirely locally, on macOS. Whisper for speech-to-text, a Qwen3 model with 235 billion parameters for language understanding, and Kokoro for speech synthesis. The pipeline also uses Silero VAD and the open source, native audio smart-turn v2 model.
+
 Your goal is to demonstrate your capabilities in a succinct way.
 
-Your output will be converted to audio so don't include special characters in your answers.
+Your input is text transcribed in realtime from the user's voice. There may be transcription errors. Adjust your responses automatically to account for these errors.
 
-Respond to what the user said in a creative and helpful way. Keep your responses brief. One or two sentences at most.
+Your output will be converted to audio so don't include special characters in your answers and do not use any markdown or special formatting.
+
+Respond to what the user said in a creative and helpful way. Keep your responses brief unless you are explicitly asked for long or detailed responses. Normally you should use one or two sentences at most. Keep each sentence short. Prefer simple sentences. Try not to use long sentences with multiple comma clauses.
+
+Start the conversation by saying, "Hello, I'm Pipecat!" Then stop and wait for the user.
 """
 
 
@@ -56,17 +65,17 @@ async def run_bot(webrtc_connection):
         params=TransportParams(
             audio_in_enabled=True,
             audio_out_enabled=True,
-            vad_analyzer=SileroVADAnalyzer(),
+            vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=0.2)),
+            turn_analyzer=LocalSmartTurnAnalyzerV2(
+                smart_turn_model_path="",  # Download from HuggingFace
+                params=SmartTurnParams(),
+            ),
         ),
     )
 
     stt = WhisperSTTServiceMLX(model=MLXModel.LARGE_V3_TURBO_Q4)
 
-    tts = KokoroTTSService(
-        model="prince-canuma/Kokoro-82M",
-        voice="af_heart",
-        sample_rate=24000
-    )
+    tts = KokoroTTSService(model="prince-canuma/Kokoro-82M", voice="af_heart", sample_rate=24000)
 
     llm = OpenAILLMService(
         api_key=None,
