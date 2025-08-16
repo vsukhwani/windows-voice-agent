@@ -76,6 +76,9 @@ async def run_bot(webrtc_connection):
     stt = WhisperSTTServiceMLX(model=MLXModel.LARGE_V3_TURBO_Q4)
 
     tts = KokoroTTSService(model="prince-canuma/Kokoro-82M", voice="af_heart", sample_rate=24000)
+    # Alternative: Process-isolated version to avoid Metal assertion failures on some systems
+    # from kokoro_tts_isolated import KokoroTTSIsolated
+    # tts = KokoroTTSIsolated(model="prince-canuma/Kokoro-82M", voice="af_heart", sample_rate=24000)
 
     llm = OpenAILLMService(
         api_key=None,
