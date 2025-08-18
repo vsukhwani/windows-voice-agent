@@ -7,13 +7,10 @@ import asyncio
 import subprocess
 import json
 import base64
-import tempfile
 import os
-import signal
-import atexit
 import sys
 from typing import AsyncGenerator, Optional
-import threading
+from pathlib import Path
 
 import numpy as np
 from loguru import logger
@@ -31,10 +28,6 @@ from pipecat.utils.tracing.service_decorators import traced_tts
 
 class KokoroTTSIsolated(TTSService):
     """Completely isolated Kokoro TTS using subprocess to avoid Metal issues."""
-
-    _worker_script = None
-    _instances = []
-    _lock = threading.Lock()
 
     def __init__(
         self,
@@ -55,11 +48,8 @@ class KokoroTTSIsolated(TTSService):
         self._process = None
         self._initialized = False
         
-        with KokoroTTSIsolated._lock:
-            KokoroTTSIsolated._instances.append(self)
-            if KokoroTTSIsolated._worker_script is None:
-                KokoroTTSIsolated._create_worker_script()
-                atexit.register(KokoroTTSIsolated._cleanup_all)
+        # Get path to worker script
+        self._worker_script = self._get_worker_script_path()
 
         self._settings = {
             "model": model,
@@ -67,111 +57,20 @@ class KokoroTTSIsolated(TTSService):
             "sample_rate": sample_rate,
         }
 
-    @classmethod
-    def _create_worker_script(cls):
-        """Create the worker script file."""
-        worker_code = '''#!/usr/bin/env python3
-import sys
-import json
-import base64
-import traceback
-import numpy as np
-
-# Add logging to worker
-import logging
-logging.basicConfig(level=logging.INFO, format='WORKER: %(message)s')
-
-try:
-    import mlx.core as mx
-    from mlx_audio.tts.utils import load_model
-    MLX_AVAILABLE = True
-except ImportError:
-    MLX_AVAILABLE = False
-
-class Worker:
-    def __init__(self):
-        self.model = None
-        self.voice = None
+    def _get_worker_script_path(self) -> str:
+        """Get the path to the standalone worker script."""
+        # Look for kokoro_worker.py in the same directory as this file
+        current_dir = Path(__file__).parent
+        worker_path = current_dir / "kokoro_worker.py"
         
-    def initialize(self, model_name, voice):
-        if not MLX_AVAILABLE:
-            return {"error": "MLX not available"}
-        try:
-            self.model = load_model(model_name)
-            self.voice = voice
-            # Test
-            list(self.model.generate(text="test", voice=voice, speed=1.0))
-            return {"success": True}
-        except Exception as e:
-            return {"error": str(e)}
-    
-    def generate(self, text):
-        try:
-            if not self.model:
-                return {"error": "Not initialized"}
-            
-            segments = []
-            for result in self.model.generate(text=text, voice=self.voice, speed=1.0):
-                # Convert MLX array to numpy immediately
-                audio_data = np.array(result.audio, copy=True)
-                print(f"Generated segment shape: {audio_data.shape}, min: {audio_data.min():.4f}, max: {audio_data.max():.4f}", file=sys.stderr)
-                segments.append(audio_data)
-            
-            if not segments:
-                return {"error": "No audio"}
-                
-            # Concatenate all segments
-            if len(segments) == 1:
-                audio = segments[0]
-            else:
-                audio = np.concatenate(segments, axis=0)
-            
-            print(f"Final audio shape: {audio.shape}, min: {audio.min():.4f}, max: {audio.max():.4f}", file=sys.stderr)
-            
-            # Check if audio is silent
-            if np.max(np.abs(audio)) < 1e-6:
-                return {"error": "Generated audio is silent"}
-            
-            # Convert to 16-bit PCM
-            audio_int16 = (audio * 32767).astype(np.int16)
-            audio_b64 = base64.b64encode(audio_int16.tobytes()).decode()
-            
-            return {"success": True, "audio": audio_b64}
-        except Exception as e:
-            import traceback
-            return {"error": f"{str(e)}\\n{traceback.format_exc()}"}
-
-worker = Worker()
-
-for line in sys.stdin:
-    try:
-        req = json.loads(line.strip())
-        if req["cmd"] == "init":
-            resp = worker.initialize(req["model"], req["voice"])
-        elif req["cmd"] == "generate":
-            resp = worker.generate(req["text"])
-        else:
-            resp = {"error": "Unknown command"}
-        print(json.dumps(resp), flush=True)
-    except Exception as e:
-        print(json.dumps({"error": str(e)}), flush=True)
-'''
+        if not worker_path.exists():
+            raise FileNotFoundError(
+                f"Worker script not found at {worker_path}. "
+                "Make sure kokoro_worker.py is in the same directory as kokoro_tts_isolated.py"
+            )
         
-        # Write to temp file
-        fd, cls._worker_script = tempfile.mkstemp(suffix='.py', prefix='kokoro_worker_')
-        with os.fdopen(fd, 'w') as f:
-            f.write(worker_code)
-        os.chmod(cls._worker_script, 0o755)
-        logger.info(f"Created worker script: {cls._worker_script}")
+        return str(worker_path)
 
-    @classmethod
-    def _cleanup_all(cls):
-        """Clean up all instances."""
-        with cls._lock:
-            for instance in cls._instances:
-                instance._cleanup()
-            if cls._worker_script and os.path.exists(cls._worker_script):
-                os.unlink(cls._worker_script)
 
     def _start_worker(self):
         """Start the worker process."""
@@ -338,7 +237,4 @@ for line in sys.stdin:
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Clean shutdown."""
         self._cleanup()
-        with KokoroTTSIsolated._lock:
-            if self in KokoroTTSIsolated._instances:
-                KokoroTTSIsolated._instances.remove(self)
         await super().__aexit__(exc_type, exc_val, exc_tb)
