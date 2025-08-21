@@ -1,0 +1,7 @@
+OPENAI_API_KEY=""
+DEEPGRAM_API_KEY=""
+RIME_API_KEY=""
+KOKORO_MODEL_PATH="server/models/kokoro/kokoro-v1.0.onnx"
+KOKORO_VOICES_PATH="server/models/kokoro/voices-v1.0.bin"
+WHISPER_DEVICE="cpu"
+WHISPER_COMPUTE_TYPE="int8"

@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Microphone Test</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 15px 32px;
+            font-size: 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        .recording {
+            background-color: #ff4444 !important;
+        }
+        #volumeBar {
+            width: 100%;
+            height: 20px;
+            background-color: #ddd;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+        #volumeLevel {
+            height: 100%;
+            background-color: #4CAF50;
+            width: 0%;
+            transition: width 0.1s;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .success { background-color: #dff0d8; border: 1px solid #d6e9c6; color: #3c763d; }
+        .error { background-color: #f2dede; border: 1px solid #ebccd1; color: #a94442; }
+        .info { background-color: #d9edf7; border: 1px solid #bce8f1; color: #31708f; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎤 Microphone Test for Voice Agent</h1>
+        <p>This page will help you test if your microphone is working properly with the voice agent.</p>
+        
+        <div id="status" class="status info">Click "Start Test" to begin...</div>
+        
+        <button id="testBtn" onclick="toggleTest()">Start Microphone Test</button>
+        <button id="voiceBtn" onclick="testVoiceAgent()" disabled>Test Voice Agent</button>
+        
+        <div id="volumeContainer" style="display: none;">
+            <h3>Microphone Volume Level:</h3>
+            <div id="volumeBar">
+                <div id="volumeLevel"></div>
+            </div>
+            <p id="volumeText">Volume: 0%</p>
+        </div>
+        
+        <div id="transcription" style="display: none;">
+            <h3>Live Transcription Test:</h3>
+            <div id="transcriptText" style="background: #f8f8f8; padding: 10px; border-radius: 4px; min-height: 50px;">
+                Say something...
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let mediaStream = null;
+        let audioContext = null;
+        let analyser = null;
+        let recognition = null;
+        let isRecording = false;
+
+        async function toggleTest() {
+            const btn = document.getElementById('testBtn');
+            const status = document.getElementById('status');
+            
+            if (!isRecording) {
+                try {
+                    // Request microphone access
+                    status.className = 'status info';
+                    status.textContent = 'Requesting microphone access...';
+                    
+                    mediaStream = await navigator.mediaDevices.getUserMedia({ 
+                        audio: {
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            autoGainControl: true
+                        }
+                    });
+                    
+                    // Set up audio analysis
+                    audioContext = new AudioContext();
+                    const source = audioContext.createMediaStreamSource(mediaStream);
+                    analyser = audioContext.createAnalyser();
+                    analyser.fftSize = 256;
+                    source.connect(analyser);
+                    
+                    // Start volume monitoring
+                    document.getElementById('volumeContainer').style.display = 'block';
+                    startVolumeMonitoring();
+                    
+                    // Start speech recognition
+                    startSpeechRecognition();
+                    
+                    status.className = 'status success';
+                    status.textContent = '✅ Microphone access granted! Speak now to test...';
+                    btn.textContent = 'Stop Test';
+                    btn.className = 'recording';
+                    document.getElementById('voiceBtn').disabled = false;
+                    isRecording = true;
+                    
+                } catch (error) {
+                    status.className = 'status error';
+                    status.textContent = '❌ Error: ' + error.message + '. Please check your microphone permissions.';
+                }
+            } else {
+                stopTest();
+            }
+        }
+        
+        function stopTest() {
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => track.stop());
+            }
+            if (audioContext) {
+                audioContext.close();
+            }
+            if (recognition) {
+                recognition.stop();
+            }
+            
+            document.getElementById('volumeContainer').style.display = 'none';
+            document.getElementById('transcription').style.display = 'none';
+            document.getElementById('testBtn').textContent = 'Start Microphone Test';
+            document.getElementById('testBtn').className = '';
+            document.getElementById('voiceBtn').disabled = true;
+            document.getElementById('status').className = 'status info';
+            document.getElementById('status').textContent = 'Test stopped. Click "Start Test" to try again.';
+            isRecording = false;
+        }
+        
+        function startVolumeMonitoring() {
+            const volumeLevel = document.getElementById('volumeLevel');
+            const volumeText = document.getElementById('volumeText');
+            
+            function updateVolume() {
+                if (!analyser || !isRecording) return;
+                
+                const dataArray = new Uint8Array(analyser.frequencyBinCount);
+                analyser.getByteFrequencyData(dataArray);
+                
+                // Calculate average volume
+                const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
+                const percentage = Math.round((average / 255) * 100);
+                
+                volumeLevel.style.width = percentage + '%';
+                volumeText.textContent = `Volume: ${percentage}% ${percentage > 20 ? '🔊' : percentage > 5 ? '🔉' : '🔈'}`;
+                
+                // Change color based on volume
+                if (percentage > 50) {
+                    volumeLevel.style.backgroundColor = '#ff4444';
+                } else if (percentage > 20) {
+                    volumeLevel.style.backgroundColor = '#4CAF50';
+                } else {
+                    volumeLevel.style.backgroundColor = '#ffaa00';
+                }
+                
+                requestAnimationFrame(updateVolume);
+            }
+            updateVolume();
+        }
+        
+        function startSpeechRecognition() {
+            if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+                document.getElementById('transcription').style.display = 'block';
+                document.getElementById('transcriptText').textContent = 'Speech recognition not supported in this browser. Try Chrome.';
+                return;
+            }
+            
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            recognition = new SpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.lang = 'en-US';
+            
+            document.getElementById('transcription').style.display = 'block';
+            
+            recognition.onresult = function(event) {
+                let transcript = '';
+                for (let i = 0; i < event.results.length; i++) {
+                    transcript += event.results[i][0].transcript;
+                    if (event.results[i].isFinal) {
+                        transcript += ' ';
+                    }
+                }
+                document.getElementById('transcriptText').textContent = transcript || 'Listening...';
+            };
+            
+            recognition.onerror = function(event) {
+                document.getElementById('transcriptText').textContent = 'Speech recognition error: ' + event.error;
+            };
+            
+            recognition.start();
+        }
+        
+        function testVoiceAgent() {
+            // Open the voice agent in a new tab
+            window.open('http://localhost:3000', '_blank');
+        }
+    </script>
+</body>
+</html>

@@ -10,3 +10,16 @@ __pycache__
 .env.development.local
 .env.test.local
 .env.production.local
+
+# Model files (too large for git)
+*.onnx
+*.bin
+server/models/
+
+# Audio files  
+*.wav
+*.mp3
+*.flac
+
+# Logs
+*.log

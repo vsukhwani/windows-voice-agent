@@ -1,0 +1,10 @@
+python-dotenv
+fastapi[all]
+uvicorn
+opencv-python>=4.12.0.88
+pipecat-ai[whisper,openai,deepgram,rime,silero]>=0.0.76
+aiortc
+nltk
+kokoro-onnx
+onnxruntime
+ttstokenizer
