@@ -40,6 +40,9 @@ from pipecat.transports.network.small_webrtc import SmallWebRTCTransport
 from pipecat.transports.network.webrtc_connection import IceServer, SmallWebRTCConnection
 from pipecat.processors.aggregators.llm_response import LLMUserAggregatorParams
 
+# Import our improved streaming TTS implementation
+from streaming_tts_v2 import create_streaming_tts_wrapper
+
 
 load_dotenv(override=True)
 
@@ -115,18 +118,28 @@ async def run_bot(webrtc_connection):
         logger.error(f"Kokoro voices file not found at: {voices_path}")
         raise FileNotFoundError(f"Kokoro voices file not found: {voices_path}")
     
-    tts = KokoroOnnxTTSService(
+    # Create the base TTS service
+    base_tts = KokoroOnnxTTSService(
         model_path=model_path,
         voices_path=voices_path,
         voice="af_heart",
         sample_rate=24000,
     )
-    logger.info("Kokoro TTS initialized successfully")
+    logger.info("Base Kokoro TTS initialized successfully")
+    
+    # Enhance with streaming capabilities
+    logger.info("Adding streaming TTS capabilities for lower latency...")
+    tts = create_streaming_tts_wrapper(
+        base_tts,
+        chunk_size=10,      # Words per chunk for faster start
+        max_delay=0.05      # Small delay between chunks
+    )
+    logger.info("Streaming TTS enhancement applied successfully")
 
     logger.info("Initializing LLM service...")
     llm = OpenAILLMService(
         api_key="dummyKey",
-        model="gemma3:12b",  # Ollama model name for Gemma 3 12B
+        model="gemma3:270m",  # Using smaller model for faster responses
         base_url="http://127.0.0.1:11434/v1",  # Ollama default port
         max_tokens=4096,
     )

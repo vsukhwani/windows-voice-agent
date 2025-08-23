@@ -318,6 +318,9 @@ async def get_performance_info():
     }
 
 
+app = FastAPI()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("🚀 Starting Ultra Low-Latency Voice Agent Server")
@@ -339,4 +342,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     logger.info(f"🚀 Starting ultra low-latency voice agent on {args.host}:{args.port}")
-    uvicorn.run(app, host=args.host, port=args.port, lifespan=lifespan)
+    uvicorn.run(app, host=args.host, port=args.port)
